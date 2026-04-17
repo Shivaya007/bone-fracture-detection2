@@ -7,6 +7,7 @@ Original file is located at
     https://colab.research.google.com/drive/1x9LiXp7500GhEgBExt7r8QsUKfrTrcNm
 """
 
+import matplotlib.pyplot as plt 
 import torch
 
 import supervision as sv
@@ -22,12 +23,9 @@ import torchvision
 from transformers import DetrImageProcessor
 image_processor = DetrImageProcessor.from_pretrained("facebook/detr-resnet-50")
 
-!ls
-
 import os
-os.listdir('bone fracture.v2-release.coco/valid')
 
-dataset = 'bone fracture.v2-release.coco'
+dataset = 'Dataset'
 
 ANNOTATION_FILE_NAME = "_annotations.coco.json"
 TRAIN_DIRECTORY = os.path.join(dataset, "train")
@@ -42,7 +40,7 @@ class CocoDetection(torchvision.datasets.CocoDetection):
         image_processor,
         train: bool = True
     ):
-        annotation_file_path = os.path.join(dataset,ANNOTATION_FILE_NAME);
+        annotation_file_path = os.path.join(image_directory_path, "_annotations.coco.json")
         super(CocoDetection, self).__init__(image_directory_path, annotation_file_path)
         self.image_processor = image_processor
 
@@ -83,25 +81,41 @@ image = TRAIN_DATASET.coco.loadImgs(image_id)[0]
 annotations = TRAIN_DATASET.coco.imgToAnns[image_id]
 image_path = os.path.join(TRAIN_DATASET.root, image['file_name'])
 image = cv2.imread(image_path)
+import numpy as np
 
-# annotate
-detections = sv.Detections.from_coco_annotations(coco_annotation=annotations)
+def detections_from_coco_annotations(annotations):
+    if len(annotations) == 0:
+        return sv.Detections.empty()
+    
+    xyxy = []
+    class_ids = []
+    
+    for ann in annotations:
+        x, y, w, h = ann['bbox']
+        xyxy.append([x, y, x + w, y + h])
+        class_ids.append(ann['category_id'])
+    
+    return sv.Detections(
+        xyxy=np.array(xyxy, dtype=np.float32),
+        class_id=np.array(class_ids, dtype=int)
+    )
+
+detections = detections_from_coco_annotations(annotations)
 
 # we will use id2label function for training
 categories = TRAIN_DATASET.coco.cats
 id2label = {k: v['name'] for k,v in categories.items()}
 
-labels = [
-    f"{id2label[class_id]}"
-    for _, _, class_id, _
-    in detections
-]
+labels = [f"{id2label[class_id]}" for class_id in detections.class_id]
 
 box_annotator = sv.BoxAnnotator()
-frame = box_annotator.annotate(scene=image, detections=detections, labels=labels)
+frame = box_annotator.annotate(scene=image, detections=detections)
 
 # %matplotlib inline
-sv.show_frame_in_notebook(image, (8, 8))
+plt.figure(figsize=(8, 8))
+plt.imshow(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+plt.axis('off')
+# plt.show()
 
 # Commented out IPython magic to ensure Python compatibility.
 # Visualize if dataset is loaded properly
@@ -123,33 +137,51 @@ image_path = os.path.join(TRAIN_DATASET.root, image['file_name'])
 image = cv2.imread(image_path)
 
 # annotate
-detections = sv.Detections.from_coco_annotations(coco_annotation=annotations)
+detections = detections_from_coco_annotations(annotations)
 
 # we will use id2label function for training
 categories = TRAIN_DATASET.coco.cats
 id2label = {k: v['name'] for k,v in categories.items()}
 
-labels = [
-    f"{id2label[class_id]}"
-    for _, _, class_id, _
-    in detections
-]
+labels = [f"{id2label[class_id]}" for class_id in detections.class_id]
 
 box_annotator = sv.BoxAnnotator()
-frame = box_annotator.annotate(scene=image, detections=detections, labels=labels)
+frame = box_annotator.annotate(scene=image, detections=detections)
 
 # %matplotlib inline
-sv.show_frame_in_notebook(image, (8, 8))
+plt.figure(figsize=(8, 8))
+plt.imshow(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+plt.axis('off')
+# plt.show()
 
 from torch.utils.data import DataLoader
 
 def collate_fn(batch):
     pixel_values = [item[0] for item in batch]
-    encoding = image_processor.pad(pixel_values, return_tensors="pt")
     labels = [item[1] for item in batch]
+    
+    # Get max dimensions in this batch
+    max_h = max(pv.shape[1] for pv in pixel_values)
+    max_w = max(pv.shape[2] for pv in pixel_values)
+    
+    padded_images = []
+    pixel_masks = []
+    
+    for pv in pixel_values:
+        c, h, w = pv.shape
+        # Pad image to max size
+        padded = torch.zeros(c, max_h, max_w)
+        padded[:, :h, :w] = pv
+        padded_images.append(padded)
+        
+        # Mask: 1 where real pixels, 0 where padded
+        mask = torch.zeros(max_h, max_w, dtype=torch.long)
+        mask[:h, :w] = 1
+        pixel_masks.append(mask)
+    
     return {
-        'pixel_values': encoding['pixel_values'],
-        'pixel_mask': encoding['pixel_mask'],
+        'pixel_values': torch.stack(padded_images),
+        'pixel_mask': torch.stack(pixel_masks),
         'labels': labels
     }
 
@@ -259,7 +291,7 @@ class CocoDetection(torchvision.datasets.CocoDetection):
         image_processor,
         train: bool = True
     ):
-        annotation_file_path = os.path.join(dataset,ANNOTATION_FILE_NAME);
+        annotation_file_path = os.path.join(image_directory_path, "_annotations.coco.json")
         super(CocoDetection, self).__init__(image_directory_path, annotation_file_path)
         self.image_processor = image_processor
 
@@ -311,15 +343,9 @@ ANNOTATION_FILE_NAME = "test/_annotations.coco.json"
 
 TEST_DIRECTORY = os.path.join(dataset, "test")
 
-
 class CocoDetection(torchvision.datasets.CocoDetection):
-    def __init__(
-        self,
-        image_directory_path: str,
-        image_processor,
-        train: bool = True
-    ):
-        annotation_file_path = os.path.join(dataset,ANNOTATION_FILE_NAME);
+    def __init__(self, image_directory_path: str, image_processor, train: bool = True):
+        annotation_file_path = os.path.join(image_directory_path, "_annotations.coco.json")
         super(CocoDetection, self).__init__(image_directory_path, annotation_file_path)
         self.image_processor = image_processor
 
@@ -327,12 +353,17 @@ class CocoDetection(torchvision.datasets.CocoDetection):
         images, annotations = super(CocoDetection, self).__getitem__(idx)
         image_id = self.ids[idx]
         annotations = {'image_id': image_id, 'annotations': annotations}
-        encoding = self.image_processor(images=images, annotations=annotations, return_tensors="pt")
+
+        encoding = self.image_processor(
+            images=images,
+            annotations=annotations,
+            return_tensors="pt"
+        )
+
         pixel_values = encoding["pixel_values"].squeeze()
         target = encoding["labels"][0]
 
         return pixel_values, target
-
 
 TEST_DATASET = CocoDetection(image_directory_path=TEST_DIRECTORY, image_processor=image_processor, train=False)
 
@@ -364,7 +395,7 @@ with torch.no_grad():
 
 
     detections = sv.Detections.from_transformers(transformers_results=results)
-    labels = [f"{id2label[class_id]} {confidence:.2f}" for _, confidence, class_id, _ in detections]
+    labels = [f"{id2label[class_id]} {confidence:.2f}" for class_id, confidence in zip(detections.class_id, detections.confidence)]
     frame_detections = box_annotator.annotate(scene=image.copy(), detections=detections, labels=labels)
 
 
@@ -380,5 +411,5 @@ axs[1].imshow(cv2.cvtColor(frame_detections, cv2.COLOR_BGR2RGB))
 axs[1].axis('off')
 axs[1].set_title('Detections')
 
-plt.show()
+# plt.show()
 

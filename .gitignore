@@ -1,0 +1,42 @@
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Dataset (large files, download separately)
+Dataset/
+*.coco.json
+
+# Trained model output
+custom-model/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Jupyter / Colab artifacts
+.ipynb_checkpoints/
+*.ipynb
+
+# PyTorch / Lightning logs and checkpoints
+lightning_logs/
+*.ckpt
+*.pt
+*.pth
+
+# Hugging Face cache
+.cache/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
