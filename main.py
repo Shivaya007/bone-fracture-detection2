@@ -4,8 +4,9 @@ import torch
 import numpy as np
 from PIL import Image
 
-from fastapi import FastAPI, File, UploadFile, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, File, UploadFile, HTTPException, Request
+from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.templating import Jinja2Templates
 from transformers import DetrImageProcessor, DetrForObjectDetection
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -35,10 +36,17 @@ app = FastAPI(
     version="1.0.0",
 )
 
+templates = Jinja2Templates(directory="templates")
+
 
 # ── Routes ────────────────────────────────────────────────────────────────────
-@app.get("/")
-def root():
+@app.get("/", response_class=HTMLResponse)
+def root(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
+
+
+@app.get("/api")
+def api_root():
     return {
         "message": "Bone Fracture Detection API is running.",
         "docs": "/docs",

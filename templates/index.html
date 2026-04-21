@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bone Fracture Detection</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .upload-section {
+            margin: 20px 0;
+            text-align: center;
+        }
+        input[type="file"] {
+            margin: 10px 0;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        .results {
+            margin-top: 20px;
+            display: none;
+        }
+        .detection {
+            background: #f9f9f9;
+            padding: 10px;
+            margin: 10px 0;
+            border-left: 4px solid #4CAF50;
+        }
+        .image-container {
+            text-align: center;
+            margin: 20px 0;
+        }
+        img {
+            max-width: 100%;
+            height: auto;
+            border: 1px solid #ddd;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .error {
+            color: #d32f2f;
+            background: #ffebee;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Bone Fracture Detection</h1>
+        <p>Upload an X-ray image to detect bone fractures using AI.</p>
+        
+        <div class="upload-section">
+            <input type="file" id="imageInput" accept="image/*">
+            <br>
+            <button id="uploadBtn">Detect Fractures</button>
+        </div>
+        
+        <div class="loading" id="loading">
+            <p>Processing image...</p>
+        </div>
+        
+        <div class="error" id="error"></div>
+        
+        <div class="results" id="results">
+            <h2>Detection Results</h2>
+            <div class="image-container">
+                <img id="uploadedImage" alt="Uploaded image">
+            </div>
+            <div id="detections"></div>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('uploadBtn').addEventListener('click', async () => {
+            const fileInput = document.getElementById('imageInput');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                showError('Please select an image file.');
+                return;
+            }
+            
+            // Show loading
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('error').style.display = 'none';
+            document.getElementById('results').style.display = 'none';
+            document.getElementById('uploadBtn').disabled = true;
+            
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+                
+                const response = await fetch('/predict', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                displayResults(data, file);
+                
+            } catch (error) {
+                showError('Error processing image: ' + error.message);
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('uploadBtn').disabled = false;
+            }
+        });
+        
+        function displayResults(data, file) {
+            // Display uploaded image
+            const img = document.getElementById('uploadedImage');
+            img.src = URL.createObjectURL(file);
+            
+            // Display detections
+            const detectionsDiv = document.getElementById('detections');
+            detectionsDiv.innerHTML = '';
+            
+            if (data.detections.length === 0) {
+                detectionsDiv.innerHTML = '<p>No fractures detected.</p>';
+            } else {
+                data.detections.forEach(detection => {
+                    const div = document.createElement('div');
+                    div.className = 'detection';
+                    div.innerHTML = `
+                        <strong>${detection.label}</strong><br>
+                        Confidence: ${(detection.confidence * 100).toFixed(1)}%<br>
+                        Position: (${detection.bbox.x_min.toFixed(0)}, ${detection.bbox.y_min.toFixed(0)}) to (${detection.bbox.x_max.toFixed(0)}, ${detection.bbox.y_max.toFixed(0)})
+                    `;
+                    detectionsDiv.appendChild(div);
+                });
+            }
+            
+            document.getElementById('results').style.display = 'block';
+        }
+        
+        function showError(message) {
+            const errorDiv = document.getElementById('error');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+        }
+    </script>
+</body>
+</html>

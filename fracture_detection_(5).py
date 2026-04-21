@@ -278,6 +278,16 @@ import torch
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 MODEL_PATH = 'custom-model'
+
+# Update model config with proper labels
+model.model.config.id2label = id2label
+model.model.config.label2id = {v: k for k, v in id2label.items()}
+
+
+# Update model config with proper labels
+model.model.config.id2label = id2label
+model.model.config.label2id = {v: k for k, v in id2label.items()}
+
 model.model.save_pretrained(MODEL_PATH)
 
 # loading model
