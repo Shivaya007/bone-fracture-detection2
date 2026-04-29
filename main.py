@@ -3,6 +3,7 @@ import os
 import torch
 import numpy as np
 from PIL import Image
+from torchvision.ops import nms
 
 from fastapi import FastAPI, File, UploadFile, HTTPException, Request
 from fastapi.responses import JSONResponse, HTMLResponse
@@ -11,7 +12,10 @@ from transformers import DetrImageProcessor, DetrForObjectDetection
 
 # ── Config ────────────────────────────────────────────────────────────────────
 MODEL_PATH = os.getenv("MODEL_PATH", "custom-model")
-CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", "0.5"))
+CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", "0.25"))
+NMS_IOU_THRESHOLD = float(os.getenv("NMS_IOU_THRESHOLD", "0.3"))
+PROCESSOR_SHORTEST_EDGE = int(os.getenv("PROCESSOR_SHORTEST_EDGE", "1000"))
+PROCESSOR_LONGEST_EDGE = int(os.getenv("PROCESSOR_LONGEST_EDGE", "1333"))
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # ── Load model once at startup ────────────────────────────────────────────────
@@ -87,7 +91,11 @@ async def predict(file: UploadFile = File(...)):
 
     # ── Run inference ─────────────────────────────────────────────────────────
     with torch.no_grad():
-        inputs = image_processor(images=image, return_tensors="pt").to(DEVICE)
+        inputs = image_processor(
+            images=image,
+            return_tensors="pt",
+            size={"shortest_edge": PROCESSOR_SHORTEST_EDGE, "longest_edge": PROCESSOR_LONGEST_EDGE},
+        ).to(DEVICE)
         outputs = model(**inputs)
 
         target_sizes = torch.tensor([[height, width]]).to(DEVICE)
@@ -96,6 +104,14 @@ async def predict(file: UploadFile = File(...)):
             threshold=CONFIDENCE_THRESHOLD,
             target_sizes=target_sizes,
         )[0]
+
+        if len(results["scores"]) > 0:
+            keep = nms(results["boxes"], results["scores"], NMS_IOU_THRESHOLD)
+            results = {
+                "scores": results["scores"][keep],
+                "labels": results["labels"][keep],
+                "boxes": results["boxes"][keep],
+            }
 
     # ── Format response ───────────────────────────────────────────────────────
     detections = []
